@@ -196,17 +196,17 @@ int writeValueToTree(string dpName, float dpValue, mapping &tree, mapping &dict)
    if (strpos(dpName, nameCounterCh) >= 0)            
       {
          idx = dpName[strlen(dpName) - 1];
-            
-         conName = dict[nameKC];
-         if (mappingHasKey(tree, conName) && mappingHasKey(tree[conName], nameKC) && mappingHasKey(tree[conName][nameKC], idx))
+         if (isTreeHasDp(dpName, tree, dict))
          {
+            conName = dict[nameKC];
             structDiagLink = tree[conName][nameKC][idx];
             structDiagLink["currentValue"] = dpValue;
             tree[conName][nameKC][idx] = structDiagLink;
-         }
+         }   
          else
          {
-            throwError(makeError("", PRIO_WARNING, ERR_PARAM, 0, "Для точки " + dpName + "не создана структура в дереве. Необходимо перезапустить скрипт для переинициализации."));               
+            ; 
+            //throwError(makeError("", PRIO_WARNING, ERR_PARAM, 0, "Для точки " + dpName + "не создана структура в дереве. Необходимо перезапустить скрипт для переинициализации."));               
          }
       } 
    return 1;   
