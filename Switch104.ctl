@@ -149,7 +149,7 @@ int createDiag(dyn_dyn_anytype &diagDPs, mapping &tree, mapping &dict)
    {    
       dpName = diagDPs[i][1];
       nameKC = dpSubStr(dpName, DPSUB_SYS_DP);
-      
+      // sdfsdfsfd
       if (strpos(dpName, nameConDataCh) >= 0) // точка с информацией по соединению. По ней строится верхушка дерева
       {
          conName = diagDPs[i][2];   
