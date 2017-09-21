@@ -6,6 +6,14 @@
 // @desc Если на пассивном соединении нет связи хотя бы до одного КЦ, то переключения не произойдет.
 //
 //--------------------------------------------------------------------------------------------------
+
+// TODO: реализовать контроль входных параметров. Т.е.:
+// TODO: 1. Не должно быть одинаковых названий диагностических соединений у коннекшенов к различным КК ()
+// TODO: 2. Не должно быть одинаковых названий у соединений в различным КК ()
+// TODO: 
+// TODO:
+// TODO: Если контроль входных параметров нарушен, то скрипт не должен выполняться.
+
 mapping structDiagLink = makeMapping("oldValue", 0, "currentValue", 0, "timeoutMs", 0); // имитация объявления структуры
 mapping structDiagCon = makeMapping("errCountCh1", 0, "errCountCh2", 0); 
 int T_DIAG_LINK_KC = 15; // максимальное время ожидания счетчика, в секундах
@@ -31,17 +39,20 @@ main()
 void switchOption3()
 {
    mapping diagTree; // дерево со всей структурой
-   mapping diagDict; // словарь вида Имя переменной-Название соединения
+   mapping dictDpCon; // словарь вида "Имя переменной" - "Название соединения"
+   mapping dictConDataConDiag; // словарь вида "Имя соединения с данными" - "Имя соединения для диагностических точек"
    mapping errReport; // отчет об ошибках
    dyn_dyn_anytype ddaDiagDPs = getValuesDPbyDPT(DPT_NAME);
-   createDiag(ddaDiagDPs, diagTree, diagDict);
-   while (true)
-   {
-      updateTree(diagTree, diagDict);
-      processTree(diagTree, diagDict, errReport);
-      switchingArbiter(errReport);
-      delay(DIAG_INTERVAL);
-   }   
+   // TODO: реализовать заполнение словаря dictConDataConDiag
+   createDiag(ddaDiagDPs, diagTree, dictDpCon, dictConDataConDiag);
+   // while (true)
+   // {
+      // updateTree(diagTree, dictDpCon);
+      // processTree(diagTree, dictDpCon, errReport);
+      // //TODO: реализовать применение словаря
+      // switchingArbiter(errReport, dictConDataConDiag);
+      // delay(DIAG_INTERVAL);
+   // }   
 }
 
 void testSql()
@@ -77,11 +88,11 @@ dyn_dyn_anytype getValuesDPbyDPT(string patternDPT)
 // @author XoXoXo
 // @param diagDPs - ссылка на двумерный массив с точками данных и их значениями, по которым будет строиться дерево 
 // @param tree - дерево-результат
-// @param dict - словарь типа "Имя конфигурационной точки" - "Название соединения"
+// @param dictDpCon - словарь типа "Имя конфигурационной точки" - "Название соединения"
 // @return - код выполнения функции ()
 // @lastmodified 20-09-2017 v.1.00
 //----------------------------------------------------------------------------------------- 
-int createDiag(dyn_dyn_anytype &diagDPs, mapping &tree, mapping &dict)
+int createDiag(dyn_dyn_anytype &diagDPs, mapping &tree, mapping &dictDpCon, mapping &dictConDataConDiag)
 {
    // формат вывода после выполнения цикла ниже
    // WCCOActrl100:["Start Switch104..."]
@@ -139,10 +150,15 @@ int createDiag(dyn_dyn_anytype &diagDPs, mapping &tree, mapping &dict)
    string nameKC;
    string conName;
    mapping levelCon;
+   string idx;
+   string conNameDiag;
+   string dpAddrRef;
+   // TODO: сделать названия переменных однотипными
    int fResult = -1;
    // очистка контейнеров
    mappingClear(tree);
-   mappingClear(dict);
+   mappingClear(dictDpCon);
+   mappingClear(dictConDataConDiag);
    patternStr = PATTERN_NAME_COUNTERS;
    strchange(patternStr, strlen(PATTERN_NAME_COUNTERS) - 1, 1, "?");
    
@@ -150,11 +166,10 @@ int createDiag(dyn_dyn_anytype &diagDPs, mapping &tree, mapping &dict)
    {    
       dpName = diagDPs[i][1];
       nameKC = dpSubStr(dpName, DPSUB_SYS_DP);
-      // sdfsdfsfd
       if (strpos(dpName, nameConDataCh) >= 0) // точка с информацией по соединению. По ней строится верхушка дерева
       {
          conName = diagDPs[i][2];   
-         dict[nameKC] = conName; // заполнение словаря   
+         dictDpCon[nameKC] = conName; // заполнение словаря   
          if (!mappingHasKey(tree, conName))
          {
             tree[conName] = makeMapping();
@@ -167,17 +182,37 @@ int createDiag(dyn_dyn_anytype &diagDPs, mapping &tree, mapping &dict)
          tree[conName] = levelCon;
       }
       else
-         if (strpos(dpName, nameCounterCh) >= 0)            
+         if (strpos(dpName, nameCounterCh) >= 0) // точка со значением счетчика           
          {
-            string idx = dpName[strlen(dpName) - 1];
-            conName = dict[nameKC];
+            idx = dpName[strlen(dpName) - 1];
+            conName = dictDpCon[nameKC];
             tree[conName][nameKC][idx] = structDiagLink;
+            
+            if (!mappingHasKey(dictConDataConDiag, conName))
+            {
+               
+               dpGet(dpName + ":_address.._reference", dpAddrRef);
+               DebugN(dpAddrRef);
+               //conNameDiag = ;
+               dictConDataConDiag[conName] = conNameDiag; // заполняется именем соединения, которое отвечает за диагностический канал
+            }
          }   
    }
    fResult = 1;
+   //DebugN(diagDPs);
    //DebugN(tree);
-   //DebugN(dict);
+   //DebugN(dictDpCon);
    return fResult;
+}
+
+int parseIecAddrRef(string addrRef, string &nameCon, int &typeIdent, int &asdu1, int &asdu0, int &ioa2, int &ioa1, int &ioa0 )
+{
+   int idx = strpos(addrRef, "-");
+   addrRef = substr(addrRef, 0, idx);
+   string tmpS = substr(addrRef, idx + 1, strlen(addrRef) - idx);
+   dyn_string = strsplit(tmpS, ".");
+   //TODO: разложить по оставшимся элементам
+   //
 }
 
 //-----------------------------------------------------------------------------------------
@@ -186,20 +221,20 @@ int createDiag(dyn_dyn_anytype &diagDPs, mapping &tree, mapping &dict)
 // @param dpName - имя точки 
 // @param dpValue - значение точки данных
 // @param tree - дерево данных
-// @param dict - словарь типа "Имя конфигурационной точки" - "Название соединения"
+// @param dictDpCon - словарь типа "Имя конфигурационной точки" - "Название соединения"
 // @return - код выполнения функции ()
 // @lastmodified 20-09-2017 v.1.00
 //----------------------------------------------------------------------------------------- 
-int writeValueToTree(string dpName, float dpValue, mapping &tree, mapping &dict)
+int writeValueToTree(string dpName, float dpValue, mapping &tree, mapping &dictDpCon)
 {
    string nameKC = dpSubStr(dpName, DPSUB_SYS_DP);
    string idx, conName;
    if (strpos(dpName, nameCounterCh) >= 0)            
       {
          idx = dpName[strlen(dpName) - 1];
-         if (isTreeHasDp(dpName, tree, dict))
+         if (isTreeHasDp(dpName, tree, dictDpCon))
          {
-            conName = dict[nameKC];
+            conName = dictDpCon[nameKC];
             structDiagLink = tree[conName][nameKC][idx];
             structDiagLink["currentValue"] = dpValue;
             tree[conName][nameKC][idx] = structDiagLink;
@@ -218,18 +253,18 @@ int writeValueToTree(string dpName, float dpValue, mapping &tree, mapping &dict)
 // @author XoXoXo
 // @param dpName - имя точки 
 // @param tree - дерево данных
-// @param dict - словарь типа "Имя конфигурационной точки" - "Название соединения"
+// @param dictDpCon - словарь типа "Имя конфигурационной точки" - "Название соединения"
 // @return - true - точка существует в дереве, false - не существует
 // @lastmodified 20-09-2017 v.1.00
 //-----------------------------------------------------------------------------------------
-bool isTreeHasDp(string dpName, mapping &tree, mapping &dict)
+bool isTreeHasDp(string dpName, mapping &tree, mapping &dictDpCon)
 {
    string nameKC = dpSubStr(dpName, DPSUB_SYS_DP);
-   if (!mappingHasKey(dict, nameKC)) 
+   if (!mappingHasKey(dictDpCon, nameKC)) 
    {
       return false;
    }   
-   string conName = dict[nameKC];
+   string conName = dictDpCon[nameKC];
    string idx = dpName[strlen(dpName) - 1];
    if (!mappingHasKey(tree, conName) || !mappingHasKey(tree[conName], nameKC) || !mappingHasKey(tree[conName][nameKC], idx))
    {
@@ -242,16 +277,16 @@ bool isTreeHasDp(string dpName, mapping &tree, mapping &dict)
 // @desc Обновляет дерево значениями из точек
 // @author XoXoXo
 // @param tree - дерево данных
-// @param dict - словарь типа "Имя конфигурационной точки" - "Название соединения"
+// @param dictDpCon - словарь типа "Имя конфигурационной точки" - "Название соединения"
 // @return - код выполнения функции ()
 // @lastmodified 20-09-2017 v.1.00
 //----------------------------------------------------------------------------------------- 
-int updateTree(mapping &tree, mapping &dict)
+int updateTree(mapping &tree, mapping &dictDpCon)
 {
    dyn_dyn_anytype diagDPs = getValuesDPbyDPT(DPT_NAME);
    for (int i = 1; i <= dynlen(diagDPs); i++)
    {
-      writeValueToTree(diagDPs[i][1], diagDPs[i][2], tree, dict);
+      writeValueToTree(diagDPs[i][1], diagDPs[i][2], tree, dictDpCon);
    }
    return 1;
 }
@@ -260,12 +295,12 @@ int updateTree(mapping &tree, mapping &dict)
 // @desc Обновляет дерево значениями из точек
 // @author XoXoXo
 // @param tree - дерево данных
-// @param dict - словарь типа "Имя конфигурационной точки" - "Название соединения"
+// @param dictDpCon - словарь типа "Имя конфигурационной точки" - "Название соединения"
 // @param res - отчет по соединениям, у которых нет связи с КЦ, в виде сопоставления вида "Имя соединения" - structDiagCon
 // @return - код выполнения функции ()
 // @lastmodified 20-09-2017 v.1.00
 //----------------------------------------------------------------------------------------- 
-int processTree(mapping &tree, mapping &dict, mapping &res)
+int processTree(mapping &tree, mapping &dictDpCon, mapping &res)
 {
    mapping connection;
    mapping kc; 
@@ -324,31 +359,48 @@ int processTree(mapping &tree, mapping &dict, mapping &res)
 //----------------------------------------------------------------------------------------- 
 int switchingArbiter(mapping &errReport)
 {
-   string keyConnection;
+   string keyDataConnection;
+   string keyDiagConnection;
    for (int i = 1; i <= mappinglen(errReport); i++)
    {
-      keyConnection = mappingGetKey(errReport, i);
-      structDiagCon = errReport[keyConnection];
+      keyDataConnection = mappingGetKey(errReport, i);
+      // keyDiagConnection = ?;
+      structDiagCon = errReport[keyDataConnection];
       if ((structDiagCon["errCountCh1"] > 0) && (structDiagCon["errCountCh2"] = 0)) // связь с КЦ потеряна на ch1, а на ch2 все в порядке
       {
+         // перепривязать диагностические теги на другое соединение
          
+         // выполнить переключение соединений
+         setActiveCon(keyDataConnection, 2);
+         setActiveCon(keyDataConnection + "_2", 2);
+         setActiveCon(keyDiagConnection, 1);
+         setActiveCon(keyDiagConnection + "_2", 1);
       } 
-      else if ((structDiagCon["errCountCh1"] = 0) && (structDiagCon["errCountCh1"] > 0)) // связь с КЦ потеряна на ch2, а на ch1 все в порядке
+      else if ((structDiagCon["errCountCh1"] = 0) && (structDiagCon["errCountCh2"] > 0)) // связь с КЦ потеряна на ch2, а на ch1 все в порядке
       {
+         // перепривязать диагностические теги на другое соединение
          
+         // выполнить переключение соединений
+         setActiveCon(keyDataConnection, 1);
+         setActiveCon(keyDataConnection + "_2", 1);
+         setActiveCon(keyDiagConnection, 2);
+         setActiveCon(keyDiagConnection + "_2", 2);
       } 
       else
       {
+         setActiveCon(keyDataConnection, 1);
          ;// ничего не делаем
       }
          
-      DebugN(keyConnection);
+      //DebugN(keyDataConnection);
    }
 }
 
-int switchCon(string conName)
+int setActiveCon(string conName, int conID)
 {
-   
+    
+    // DebugN("setActiveCon---------------------------------");
+    // DebugN(conName);
 }
 
 //-----------------------------------------------------------------------------------------
@@ -359,8 +411,8 @@ int switchCon(string conName)
 // @return
 // @lastmodified 20-09-2017 v.1.00
 //-----------------------------------------------------------------------------------------
-int getErrCnt( string conName, int conID, mapping &diagStruct )
-{
+// int getErrCnt( string conName, int conID, mapping &diagStruct )
+// {
    
-   return 0;
-}
+   // return 0;
+// }
