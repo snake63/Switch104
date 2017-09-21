@@ -7,6 +7,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 mapping structDiagLink = makeMapping("oldValue", 0, "currentValue", 0, "timeoutMs", 0); // имитация объявления структуры
+mapping structDiagCon = makeMapping("errCountCh1", 0, "errCountCh2", 0); 
 int T_DIAG_LINK_KC = 15; // максимальное время ожидания счетчика, в секундах
 int DIAG_INTERVAL = 1; // интервал запуска диагностики, в секундах
 string PATTERN_NAME_COUNTERS = "*CounterKC_Con*";
@@ -31,14 +32,14 @@ void switchOption3()
 {
    mapping diagTree; // дерево со всей структурой
    mapping diagDict; // словарь вида Имя переменной-Название соединения
+   mapping errReport; // отчет об ошибках
    dyn_dyn_anytype ddaDiagDPs = getValuesDPbyDPT(DPT_NAME);
-   //DebugN(ddaDSCountersKC);
    createDiag(ddaDiagDPs, diagTree, diagDict);
    while (true)
    {
       updateTree(diagTree, diagDict);
-      processTree(diagTree, diagDict);
-      //DebugN(diagTree);
+      processTree(diagTree, diagDict, errReport);
+      switchingArbiter(errReport);
       delay(DIAG_INTERVAL);
    }   
 }
@@ -212,6 +213,15 @@ int writeValueToTree(string dpName, float dpValue, mapping &tree, mapping &dict)
    return 1;   
 }
 
+//-----------------------------------------------------------------------------------------
+// @desc Функция проверяет существование точки в дереве объектов 
+// @author XoXoXo
+// @param dpName - имя точки 
+// @param tree - дерево данных
+// @param dict - словарь типа "Имя конфигурационной точки" - "Название соединения"
+// @return - true - точка существует в дереве, false - не существует
+// @lastmodified 20-09-2017 v.1.00
+//-----------------------------------------------------------------------------------------
 bool isTreeHasDp(string dpName, mapping &tree, mapping &dict)
 {
    string nameKC = dpSubStr(dpName, DPSUB_SYS_DP);
@@ -228,11 +238,9 @@ bool isTreeHasDp(string dpName, mapping &tree, mapping &dict)
    return true;
 }
 
-
 //-----------------------------------------------------------------------------------------
 // @desc Обновляет дерево значениями из точек
 // @author XoXoXo
-// @param diagDPs - массив точек со значениями
 // @param tree - дерево данных
 // @param dict - словарь типа "Имя конфигурационной точки" - "Название соединения"
 // @return - код выполнения функции ()
@@ -251,16 +259,98 @@ int updateTree(mapping &tree, mapping &dict)
 //-----------------------------------------------------------------------------------------
 // @desc Обновляет дерево значениями из точек
 // @author XoXoXo
-// @param diagDPs - массив точек со значениями
 // @param tree - дерево данных
 // @param dict - словарь типа "Имя конфигурационной точки" - "Название соединения"
+// @param res - отчет по соединениям, у которых нет связи с КЦ, в виде сопоставления вида "Имя соединения" - structDiagCon
 // @return - код выполнения функции ()
 // @lastmodified 20-09-2017 v.1.00
 //----------------------------------------------------------------------------------------- 
-int processTree(mapping &tree, mapping &dict)
+int processTree(mapping &tree, mapping &dict, mapping &res)
+{
+   mapping connection;
+   mapping kc; 
+   string keyConnection, keyKC, keyDiagLink;
+   int result = 0;
+   mappingClear(res);
+   for (int i = 1; i <= mappinglen(tree); i++)
+   {
+      keyConnection = mappingGetKey(tree, i);
+      connection = tree[keyConnection];
+      for (int j = 1; j <= mappinglen(connection); j++)
+      {
+         keyKC = mappingGetKey(connection, j);
+         kc = connection[keyKC];
+         for (int k = 1; k <= mappinglen(kc); k++)
+         {
+            keyDiagLink = mappingGetKey(kc, k);
+            structDiagLink = kc[keyDiagLink];
+            if (structDiagLink["currentValue"] == structDiagLink["oldValue"])
+            {
+               structDiagLink["timeoutMs"] += DIAG_INTERVAL;
+            }
+            else
+            {
+               structDiagLink["oldValue"] = structDiagLink["currentValue"];
+               structDiagLink["timeoutMs"] = 0;
+            }
+            if (structDiagLink["timeoutMs"] > T_DIAG_LINK_KC)
+            {
+               result++;
+               if (!mappingHasKey(res, keyConnection))
+               {
+                  res[keyConnection] = makeMapping();
+               }
+               structDiagCon = res[keyConnection];
+               switch (keyDiagLink) 
+               {
+                  case "1": ++structDiagCon["errCountCh1"]; break;
+                  case "2": ++structDiagCon["errCountCh2"]; break;
+               }
+               res[keyConnection] = structDiagCon;
+            }
+            tree[keyConnection][keyKC][keyDiagLink] = structDiagLink;
+         }
+      }
+   }
+   return 1;
+}
+
+//-----------------------------------------------------------------------------------------
+// @desc Арбитор переключения соединений
+// @author XoXoXo
+// @param errReport - отчет об ошибках формата "Имя соединени" - "Счетчики ошибок в структуре structDiagCon"
+// @return - код выполнения функции ()
+// @lastmodified 20-09-2017 v.1.00
+//----------------------------------------------------------------------------------------- 
+int switchingArbiter(mapping &errReport)
+{
+   string keyConnection;
+   for (int i = 1; i <= mappinglen(errReport); i++)
+   {
+      keyConnection = mappingGetKey(errReport, i);
+      structDiagCon = errReport[keyConnection];
+      if ((structDiagCon["errCountCh1"] > 0) && (structDiagCon["errCountCh2"] = 0)) // связь с КЦ потеряна на ch1, а на ch2 все в порядке
+      {
+         
+      } 
+      else if ((structDiagCon["errCountCh1"] = 0) && (structDiagCon["errCountCh1"] > 0)) // связь с КЦ потеряна на ch2, а на ch1 все в порядке
+      {
+         
+      } 
+      else
+      {
+         ;// ничего не делаем
+      }
+         
+      DebugN(keyConnection);
+   }
+}
+
+int switchCon(string conName)
 {
    
 }
+
 //-----------------------------------------------------------------------------------------
 // @desc
 // @author
