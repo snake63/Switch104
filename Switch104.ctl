@@ -22,6 +22,7 @@ string PATTERN_NAME_COUNTERS = "*CounterKC_Con*";
 string DPT_NAME = "\"_KC_Diag\"";
 string nameConDataCh = "NameConDataCh";
 string nameCounterCh = "CounterCh";
+
 main()
 {
    DebugN("Start Switch104...");
@@ -53,13 +54,6 @@ void switchOption3()
       // switchingArbiter(errReport, dictConDataConDiag);
       // delay(DIAG_INTERVAL);
    // }   
-}
-
-void testSql()
-{
-   dyn_dyn_anytype ddaDataSet;
-   dpQuery("SELECT '_original.._value' FROM '*' WHERE _DPT = \"_KC_Diag\"", ddaDataSet);
-   DebugN(ddaDataSet);
 }
 
 //-----------------------------------------------------------------------------------------
@@ -153,8 +147,6 @@ int createDiag(dyn_dyn_anytype &diagDPs, mapping &tree, mapping &dictDpCon, mapp
    string idx;
    string conNameDiag;
    string dpAddrRef;
-   // TODO: сделать названия переменных однотипными
-   int fResult = -1;
    // очистка контейнеров
    mappingClear(tree);
    mappingClear(dictDpCon);
@@ -198,21 +190,46 @@ int createDiag(dyn_dyn_anytype &diagDPs, mapping &tree, mapping &dictDpCon, mapp
             }
          }   
    }
-   fResult = 1;
    //DebugN(diagDPs);
    //DebugN(tree);
    //DebugN(dictDpCon);
-   return fResult;
+   return 1;
 }
 
+//-----------------------------------------------------------------------------------------
+// @desc Парсит строку типа IECTARGET-13.0.1.0.0.1
+// @author XoXoXo
+// @param addrRef - ссылка на двумерный массив с точками данных и их значениями, по которым будет строиться дерево 
+// @param nameCon - имя соединения (IECTARGET)
+// @param typeIdent - идентификатор типа точки TI (13)
+// @param asdu1 - старший байт адреса ASDU
+// @param asdu0 - младший байт адреса ASDU
+// @param ioa2 - старший байт адреса IOA
+// @param ioa1 - средний байт адреса IOA
+// @param ioa0 - младший байт адреса IOA
+// @return - код выполнения функции (1 - парсинг успешен, -1 - ошибка формата адреса)
+// @lastmodified 20-09-2017 v.1.00
+//-----------------------------------------------------------------------------------------
 int parseIecAddrRef(string addrRef, string &nameCon, int &typeIdent, int &asdu1, int &asdu0, int &ioa2, int &ioa1, int &ioa0 )
 {
    int idx = strpos(addrRef, "-");
-   addrRef = substr(addrRef, 0, idx);
-   string tmpS = substr(addrRef, idx + 1, strlen(addrRef) - idx);
-   dyn_string = strsplit(tmpS, ".");
-   //TODO: разложить по оставшимся элементам
-   //
+   DebugN(idx);
+   addrRef = substr(addrRef, 0, idx); // имя соединения (IECTARGET)
+   DebugN(addrRef);
+   string tmpS = substr(addrRef, idx + 1, strlen(addrRef) - idx); // все, что справа от тире (13.0.1.0.0.1) 
+   DebugN(tmpS);
+   dyn_string dsContainer = strsplit(tmpS, ".");
+   if (dynlen(dsContainer) != 6)
+   {
+      return -1;
+   }
+   typeIdent = dsContainer[1];
+   asdu1 = dsContainer[2];
+   asdu0 = dsContainer[3];
+   ioa2 = dsContainer[4];
+   ioa1 = dsContainer[5];
+   ioa0 = dsContainer[6];     
+   return 1;
 }
 
 //-----------------------------------------------------------------------------------------
@@ -402,6 +419,16 @@ int setActiveCon(string conName, int conID)
     // DebugN("setActiveCon---------------------------------");
     // DebugN(conName);
 }
+
+// Раздел с тестовыми функциями
+// ***********************************************************************************************************
+void testSql()
+{
+   dyn_dyn_anytype ddaDataSet;
+   dpQuery("SELECT '_original.._value' FROM '*' WHERE _DPT = \"_KC_Diag\"", ddaDataSet);
+   DebugN(ddaDataSet);
+}
+
 
 //-----------------------------------------------------------------------------------------
 // @desc
